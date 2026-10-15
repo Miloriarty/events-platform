@@ -20,6 +20,7 @@
         <module>config-server</module>
         <module>discovery-server</module>
         <!-- позже: user-service, event-service, booking-service, api-gateway -->
+        <module>user-service</module>
     </modules>
 
     <properties>

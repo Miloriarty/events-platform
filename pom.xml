@@ -21,6 +21,7 @@
         <module>discovery-server</module>
         <!-- позже: user-service, event-service, booking-service, api-gateway -->
         <module>user-service</module>
+        <module>event-service</module>
     </modules>
 
     <properties>

@@ -1,7 +1,9 @@
 package org.example.booking.config;
 
 import org.example.booking.client.EventClient;
-import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerInterceptor;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerRequestFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -11,16 +13,17 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 @Configuration
 public class ClientConfig {
 
-    // @LoadBalanced: имя "event-service" в URL заменяется реальным адресом из Eureka
+    // Балансировщик подключается только к этому клиенту, а не ко всем RestClient в приложении
+    // Иначе его получит и сам клиент Eureka, и ему придётся искать Eureka через Eureka
     @Bean
-    @LoadBalanced
-    RestClient.Builder loadBalancedRestClientBuilder() {
-        return RestClient.builder();
-    }
+    EventClient eventClient(LoadBalancerClient loadBalancerClient) {
+        RestClient restClient = RestClient.builder()
+                .baseUrl("http://event-service")
+                .requestInterceptor(new LoadBalancerInterceptor(
+                        loadBalancerClient,
+                        new LoadBalancerRequestFactory(loadBalancerClient)))
+                .build();
 
-    @Bean
-    EventClient eventClient(@LoadBalanced RestClient.Builder builder) {
-        RestClient restClient = builder.baseUrl("http://event-service").build();
         return HttpServiceProxyFactory
                 .builderFor(RestClientAdapter.create(restClient))
                 .build()

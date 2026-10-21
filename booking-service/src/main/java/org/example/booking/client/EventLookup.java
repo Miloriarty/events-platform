@@ -1,5 +1,7 @@
 package org.example.booking.client;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.http.HttpStatus;
@@ -9,6 +11,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class EventLookup {
+
+    private static final Logger log = LoggerFactory.getLogger(EventLookup.class);
 
     private final EventClient client;
     private final CircuitBreaker breaker;
@@ -22,7 +26,7 @@ public class EventLookup {
         EventInfo event = breaker.run(
                 () -> fetch(id),
                 throwable -> {
-                    // сюда попадаем при таймауте, ошибке связи и открытом выключателе
+                    log.warn("Call to event-service failed for event {}", id, throwable);
                     throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                             "Event service is temporarily unavailable, please try again later");
                 });
@@ -32,7 +36,6 @@ public class EventLookup {
         return event;
     }
 
-    // 404 от event-service это нормальный ответ, а не сбой: выключатель его не считает ошибкой
     private EventInfo fetch(Long id) {
         try {
             return client.getEvent(id);

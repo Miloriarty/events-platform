@@ -22,6 +22,7 @@
         <!-- позже: user-service, event-service, booking-service, api-gateway -->
         <module>user-service</module>
         <module>event-service</module>
+        <module>booking-service</module>
     </modules>
 
     <properties>

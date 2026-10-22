@@ -1,4 +1,8 @@
-Кроме трёх уже готовых (`config-server`, `discovery-server`, `user-service`) остаются три обязательных сервиса и один необязательный.
+# Events Platform
+
+Микросервисное приложение для управления мероприятиями на Spring Cloud: Config Server, Eureka, Spring Cloud Gateway, Circuit Breaker (Resilience4j), Actuator, Swagger для каждого сервиса.
+
+Стек: Java 25, Spring Boot 4.0, Spring Cloud 2025.1, PostgreSQL.
 
 ## Общая картина
 
@@ -7,124 +11,145 @@
 | config-server ✅ | 8888 | нет (git) | конфиги | нет |
 | discovery-server ✅ | 8761 | нет | реестр сервисов | нет |
 | user-service ✅ | 8081 | `user_db` | Users, Roles, выдача JWT | нет |
-| **event-service** | 8082 | `event_db` | Events, Categories, Locations | нет |
-| **booking-service** | 8083 | `booking_db` | Orders, OrderItems, Tickets, Registrations | event-service |
-| **api-gateway** | 8080 | нет | маршруты, проверка JWT | все (через Eureka) |
+| event-service ✅ | 8082 | `event_db` | Events, Categories, Locations | нет |
+| booking-service ✅ | 8083 | `booking_db` | Tickets, Orders, OrderItems, Registrations | event-service |
+| api-gateway ✅ | 8080 | нет | маршруты, проверка JWT и ролей, общий Swagger | все (через Eureka) |
 | notification-service (по желанию) | 8084 | `notification_db` | история уведомлений | слушает брокер |
 
 ```
 Клиент -> api-gateway :8080 --> user-service    :8081
-           (проверка JWT)   |--> event-service   :8082
-                            |--> booking-service :8083 ->Feign-> event-service
-                                       |
-                                       |->(по желанию, событие)-> notification-service
+          (JWT, роли,       |--> event-service   :8082
+           X-User-*)        |--> booking-service :8083 -> HTTP Interface + Circuit Breaker -> event-service
 
-Все сервисы: конфиг <- config-server :8888,  регистрация -> discovery-server :8761
+Все сервисы: конфиг <- config-server :8888 (git: ../events-config-repo),  регистрация -> discovery-server :8761
 ```
+
+### Соответствие ТЗ
+
+| Требование | Где сделано |
+|---|---|
+| Минимум 3 микросервиса | `user-service`, `event-service`, `booking-service` |
+| Spring Cloud Config | `config-server` + отдельный git-репозиторий `events-config-repo` |
+| Eureka | `discovery-server`, все сервисы и gateway регистрируются в нём |
+| API Gateway | `api-gateway`: маршруты `lb://...`, проверка JWT, правила по ролям |
+| * Circuit Breaker | `booking-service`: вызовы `event-service` идут через `EventLookup` (Resilience4j) |
+| * Мониторинг и логирование | Actuator (`health`, `info`, `metrics`, на gateway ещё `gateway`), общий формат логов из config-repo, лог каждого запроса в gateway |
+| * API-документация | Swagger в каждом сервисе и общий Swagger UI на gateway |
+
+## user-service
+
+Пользователи и роли. Выдаёт JWT (`POST /api/auth/login`) и регистрирует новых пользователей с ролью `USER` (`POST /api/auth/register`). В токене `sub` содержит id пользователя, а claim `role` содержит его роль. `/api/users` доступен только `ADMIN`.
+
+При старте `DataInitializer` создаёт роли `ADMIN`, `MANAGER`, `USER` и пользователя `admin` / `admin123`.
 
 ## event-service
 
-**Ответственность:** каталог мероприятий. Здесь живут `Events`, `Categories`, `Locations`. Они связаны между собой через обычные JPA-связи (`Event → Category`, `Event → Location`), потому что все три сущности в одном сервисе и в одной БД.
+Каталог мероприятий: `Events`, `Categories`, `Locations`. Между ними обычные JPA-связи (`Event → Category`, `Event → Location`), потому что все три сущности лежат в одной БД.
 
-**Что меняется по сравнению с монолитом:**
-- `EventsModel.organizer` (ссылка на `UsersModel`) становится полем `organizerId` типа `Long`. Организатор берётся из заголовка `X-User-Id`, который проставит Gateway, поэтому клиент не может указать чужой id.
-- Обратные списки (`registrations`, `tickets` внутри `EventsModel`, если они есть) удаляются, потому что эти сущности уедут в `booking-service`.
-
-**Эндпоинты (примерно):**
-- `GET/POST/PUT/DELETE /api/events`, поиск по категории, локации, дате;
-- `/api/categories`, `/api/locations`: справочники;
-- `GET /api/events/{id}`: им будет пользоваться `booking-service` (существует ли мероприятие, вместимость, цена).
-
-**Правила доступа** (проверит Gateway): читать могут все, создавать и менять только `MANAGER` и `ADMIN`. Менеджер может менять только свои мероприятия, это проверяется внутри сервиса: `organizerId == X-User-Id` (или роль `ADMIN`).
-
-**Ключевое решение:** сервис хранит **вместимость** (`capacity`), но не знает, сколько мест занято. Это знает `booking-service`. Так у каждого факта один владелец.
+- `organizerId` — простой `Long`, а не ссылка на пользователя. Он берётся из заголовка `X-User-Id`, который проставляет gateway, поэтому указать чужой id нельзя.
+- Менять и удалять мероприятие может только организатор (`organizerId == X-User-Id`) или `ADMIN`. Это проверяет сам сервис.
+- `GET /api/events/my` возвращает мероприятия текущего пользователя.
+- Сервис хранит вместимость (`maxParticipants`), но не знает, сколько мест занято. Занятость считает `booking-service`, так у каждого факта один владелец.
 
 ## booking-service
 
-**Ответственность:** всё, что связано с покупкой и участием: `Orders`, `OrderItems`, `Tickets`, `Registrations`. Эти сущности тесно связаны и должны меняться в одной транзакции (заказ и билеты создаются вместе), поэтому их нельзя разносить по разным сервисам.
+Билеты, заказы и участие: `Tickets`, `Orders`, `OrderItems`, `Registrations`. Они меняются вместе в одной транзакции, поэтому живут в одном сервисе.
 
-**Что меняется:**
-- `userId` и `eventId` становятся простыми полями `Long`, без `@ManyToOne`.
-- `OrderItems` хранит **цену на момент покупки**, а не ссылку на текущую цену мероприятия. Если менеджер потом изменит цену, старые заказы не должны поменяться.
+- `userId` и `eventId` — простые поля `Long`, без `@ManyToOne` на чужие сущности.
+- `Tickets` — типы билетов с ценой и остатком (`quantity`).
+- `OrderItems` хранит тип и **цену на момент покупки**. Если цену потом изменят, старые заказы останутся прежними.
 
-**Как проходит оформление заказа:**
-1. Gateway проверил токен и передал `X-User-Id`.
-2. `booking-service` через **Feign** спрашивает `event-service`: есть ли мероприятие, какова вместимость и цена.
-3. Считает у себя уже занятые места (`count` по `eventId`) и сравнивает с вместимостью.
-4. В одной транзакции создаёт `Order`, `OrderItems`, `Tickets`/`Registration`.
+**Заказ** (`POST /api/orders`) в `event-service` не обращается. Для каждой позиции он атомарно списывает билеты (`update ... where quantity >= :amount`), фиксирует цену и считает итог. Если билетов не хватает, вся транзакция откатывается и клиент получает `409`. При отмене билеты возвращаются в остаток.
 
-Здесь видно, зачем нужен **Circuit Breaker**: если `event-service` не отвечает, вызов оборачивается в Resilience4j, а при срабатывании fallback клиент получает понятное «сервис временно недоступен» вместо зависшего запроса.
+**Регистрация** (`POST /api/registrations`) привязывает купленный билет к мероприятию:
+1. Проверяет, что позиция заказа принадлежит пользователю, заказ не отменён и билеты в позиции ещё остались.
+2. Спрашивает у `event-service`, существует ли мероприятие, не закончилось ли оно и какова его вместимость.
+3. Считает подтверждённые регистрации на это мероприятие и сравнивает с вместимостью.
+4. Сохраняет регистрацию с копией названия мероприятия.
 
-**Проверка пользователя:** в `user-service` ходить на каждый заказ не нужно. Раз токен валиден и `userId` пришёл от Gateway, пользователь существует. Feign в `user-service` понадобится только там, где нужны данные о пользователе (например, имя в списке регистраций для менеджера). Меньше связей между сервисами означает меньше мест, которые могут сломаться.
+**Вызов event-service** сделан через HTTP Interface (`@HttpExchange` + `RestClient`), а не через Feign. Балансировщик Eureka подключён только к этому клиенту (`ClientConfig`). Вызов обёрнут в **Circuit Breaker** (`EventLookup`, настройки в `ResilienceConfig`):
+- таймаут 3 с;
+- окно из 10 вызовов, порог ошибок 50 %;
+- после срабатывания пауза 15 с.
 
-**Доступ к данным:** обычный пользователь видит только свои заказы (`userId == X-User-Id`), `ADMIN` видит все. Это тоже проверка внутри сервиса по заголовку роли.
+Если `event-service` недоступен, клиент получает `503` с понятным сообщением вместо зависшего запроса. Ответ `404` от `event-service` превращается в `404 Event not found` и не засчитывается брейкеру как сбой.
 
-**Открытый вопрос (из шага user-service):** что делать с заказами удалённого пользователя. Предлагаю самый простой вариант: запретить удалять пользователя, у которого есть заказы, или перейти на «мягкое удаление» (флаг `active=false`). Решим, когда дойдём до кода.
+**Доступ к данным:** пользователь видит только свои заказы и регистрации, `ADMIN` видит все. Список участников мероприятия (`GET /api/registrations/event/{eventId}`) доступен организатору и `ADMIN`.
 
 ## api-gateway
 
-**Ответственность:** единственная точка входа для клиента. Своей БД нет.
+Единственная точка входа для клиента. Он реактивный (WebFlux), своей БД у него нет. Маршруты и настройки Swagger лежат в `events-config-repo/api-gateway.yml`.
 
-**Что делает:**
-1. **Маршрутизация** через Eureka (`lb://имя-сервиса`):
-    - `/api/auth/**`, `/api/users/**`, `/api/roles/**` → `user-service`
-    - `/api/events/**`, `/api/categories/**`, `/api/locations/**` → `event-service`
-    - `/api/orders/**`, `/api/registrations/**`, `/api/tickets/**` → `booking-service`
-2. **Проверка JWT** (глобальный фильтр): берёт секрет из того же config-repo, проверяет подпись и срок, достаёт `sub` и `role`.
-3. **Правила по путям и ролям** (то, что раньше было в `SecurityConfig`):
-    - `/api/auth/**`: всем;
-    - `GET /api/events/**`, категории, локации: всем (аналог вашего `/public-events`);
-    - изменение мероприятий: `MANAGER`, `ADMIN`;
-    - `/api/users/**`, `/api/roles/**`: только `ADMIN`;
-    - заказы, билеты, регистрации: любой авторизованный.
-4. **Передача личности дальше:** добавляет заголовки `X-User-Id` и `X-User-Role`.
+**Маршрутизация** через Eureka:
+- `/api/auth/**`, `/api/users/**` → `user-service`
+- `/api/events/**`, `/api/categories/**`, `/api/locations/**` → `event-service`
+- `/api/orders/**`, `/api/registrations/**`, `/api/tickets/**` → `booking-service`
+- `/<service>/v3/api-docs` → `/v3/api-docs` нужного сервиса (для общего Swagger UI)
 
-**Важная деталь безопасности:** до добавления своих заголовков Gateway должен **удалить** такие же заголовки, пришедшие от клиента. Иначе кто угодно отправит `X-User-Role: ADMIN` и обманет сервисы. Это обязательная часть фильтра.
+**Проверка JWT** (`AuthFilter`). Подпись проверяется тем же секретом, которым её ставит `user-service`: `jwt.secret` лежит в общем `application.yml` config-repo. Фильтр всегда **удаляет** присланные клиентом `X-User-Id` и `X-User-Role` и ставит свои. Иначе любой мог бы прислать `X-User-Role: ADMIN`.
 
-**Особенности реализации:**
-- Gateway работает на реактивном стеке (WebFlux), поэтому ваш старый сервлетный `JwtFilter` не подойдёт. Библиотеку JJWT использовать можно, фильтр пишется заново.
-- В Spring Cloud 2025.x стартеры Gateway переименовали, точное имя зависимости и префикс настроек сверим при реализации.
-- Здесь же удобно собрать единый Swagger UI из документаций всех сервисов.
+**Правила доступа** (`AccessRules`, срабатывает первое подходящее):
+
+| Путь | Доступ |
+|---|---|
+| `/api/auth/**`, документация сервисов | всем |
+| `GET /api/events/my` | любой авторизованный |
+| `GET` мероприятий, категорий, локаций | всем |
+| изменение мероприятий, категорий, локаций | `MANAGER`, `ADMIN` |
+| `/api/users/**` | `ADMIN` |
+| `GET /api/tickets/**` | любой авторизованный |
+| изменение билетов | `MANAGER`, `ADMIN` |
+| заказы, регистрации, всё остальное | любой авторизованный |
+
+Без токена на закрытом пути gateway вернёт `401`, с неверным или просроченным токеном тоже `401`, при нехватке роли `403`. `RequestLoggingFilter` пишет в лог одну строку на каждый запрос: метод, путь, маршрут, статус и время.
+
+Сервисы по-прежнему доступны напрямую на своих портах, и там заголовки никто не проверяет. Защищён только вход через gateway.
 
 ## notification-service (необязательный)
 
-**Идея:** после создания заказа или регистрации пользователю уходит уведомление. Это единственный сервис, который показывает **асинхронное** взаимодействие: `booking-service` публикует событие `order.created` в брокер (RabbitMQ), а `notification-service` его читает и пишет в лог (или «отправляет письмо»). Заказ при этом не ждёт отправки.
+**Идея:** после создания заказа или регистрации пользователю уходит уведомление. Это показало бы **асинхронное** взаимодействие: `booking-service` публикует событие `order.created` в брокер (RabbitMQ), а `notification-service` читает его и пишет в лог (или «отправляет письмо»). Заказ при этом не ждёт отправки.
 
-**Цена:** нужно поднять брокер (проще всего в Docker) и добавить зависимость `spring-boot-starter-amqp`. Для зачёта обязательных требований он не нужен. Я бы делал его последним, если останется время.
+**Цена:** нужно поднять брокер (проще всего в Docker) и добавить `spring-boot-starter-amqp`. Для зачёта он не нужен.
 
-## Порядок реализации
+## Что осталось сделать
 
-1. ✅ config-server, discovery-server, user-service
-2. event-service
-3. booking-service (с Feign и Circuit Breaker)
-4. api-gateway (JWT, маршруты, роли)
-5. Сквозная проверка, Swagger через Gateway
-6. По желанию: notification-service
+1. **Закоммитить `events-config-repo`.** Config Server читает только закоммиченное. Без `api-gateway.yml` и `jwt` в `application.yml` gateway не стартует, а `user-service` не сможет выпускать токены.
+2. **Проверить Circuit Breaker вживую** (раздел 8 ниже).
+3. **Пройти полный сценарий через gateway:**
+   - менеджер создаёт категорию, локацию, мероприятие и тип билета;
+   - пользователь покупает билет и регистрируется;
+   - менеджер смотрит участников;
+   - пользователь отменяет заказ, билеты возвращаются в остаток.
+4. **Билеты не привязаны к мероприятию.** У `Tickets` нет `eventId`, поэтому один купленный билет можно использовать для регистрации на любое мероприятие. Если так задумано, это стоит явно описать. Если нет, добавить `eventId` в `Tickets` и проверять его при регистрации.
+5. **Удаление пользователя с заказами.** Сейчас `DELETE /api/users/{id}` удаляет пользователя без проверок, и его заказы остаются с несуществующим `userId`. Варианты: запретить удаление при наличии заказов или перейти на «мягкое удаление» (`active=false`). Кроме того, для несуществующего id `findById` бросает `RuntimeException`, и клиент получает `500` вместо `404`.
+6. **Тесты.** В `pom.xml` пяти модулей нет `spring-boot-starter-test`, поэтому их `contextLoads` не компилируются. Нужно либо добавить зависимость, либо удалить эти тесты: им всё равно нужны запущенный Config Server и PostgreSQL. Отдельно работает только юнит-тест `api-gateway/.../AccessRulesTest`.
+7. **Убрать из git ранее закоммиченные `target/` и `.idea/`** (раздел 10).
+8. По желанию: **notification-service**, Circuit Breaker с fallback-маршрутом на самом gateway.
 
 ---
 
-## Всё для запуска и работы (кроме того, что подтягивается из git-репозитория конфигов)
+## Запуск
 
-### 1. Проверка инструментов
+### 1. Инструменты
 
 ```bash
-java -version      # должна быть 25
-mvn -version       # Maven 3.9+ (или запускать из IDEA, она использует встроенный)
+java -version      # нужен JDK 25+ (именно JDK с javac, а не только JRE)
 psql --version
 git --version
 ```
 
-### 2. PostgreSQL: 
+Отдельный Maven не нужен: в каждом модуле есть wrapper `mvnw`. Можно запускать и из IDEA.
 
-Создание баз, по одной на сервис (три нужны обязательно, четвёртая для необязательного сервиса):
+### 2. PostgreSQL
 
-```bash
+По одной базе на сервис:
+
+```sql
 CREATE DATABASE user_db;
 CREATE DATABASE event_db;
 CREATE DATABASE booking_db;
-CREATE DATABASE notification_db;   # только если будете делать notification-service
+CREATE DATABASE notification_db;   -- только для notification-service
 ```
-
 
 ### 3. Пароль БД
 
@@ -138,40 +163,50 @@ export DB_PASSWORD=postgres
 
 ### 4. Таблицы и начальные данные
 
-Таблицы создавать вручную **не нужно**: в конфигах `ddl-auto: update`, Hibernate создаст их при первом запуске сервиса. Начальные данные создаёт `DataInitializer` в `user-service`: роли `ADMIN`, `MANAGER`, `USER` и пользователь `admin` / `admin123`. Категории и локации (в `event_db`) будут пустыми, добавите их через API после готовности `event-service`.
+Таблицы создавать вручную **не нужно**: в конфигах `ddl-auto: update`, Hibernate создаст их при первом запуске. `DataInitializer` в `user-service` создаёт роли и пользователя `admin` / `admin123`. Категории, локации, мероприятия и билеты изначально пустые, их нужно добавить через API.
+
+### 5. Сборка
+
+```bash
+# из корня events-platform; JAVA_HOME должен указывать на JDK
+api-gateway/mvnw -f pom.xml package -Dmaven.test.skip=true
+
+# только юнит-тест правил доступа gateway
+api-gateway/mvnw -f pom.xml -pl api-gateway test -Dtest=AccessRulesTest
+```
+
+`-Dmaven.test.skip=true` нужен, пока не решён пункт 6 из «Что осталось сделать».
 
 ### 6. Порядок запуска
 
-Каждый сервис в своём терминале (или Run Configuration в IDEA). Порядок важен:
+Каждый сервис запускается в своём терминале (или своей Run Configuration в IDEA). Порядок важен:
 
 ```bash
-# 1. Config Server
-mvn -pl config-server spring-boot:run
+java -jar config-server/target/config-server-0.0.1-SNAPSHOT.jar        # 1. Config Server
+java -jar discovery-server/target/discovery-server-0.0.1-SNAPSHOT.jar  # 2. Eureka
 
-# 2. Eureka (когда Config Server поднялся)
-mvn -pl discovery-server spring-boot:run
+# 3. Бизнес-сервисы, в любом порядке
+java -jar user-service/target/user-service-0.0.1-SNAPSHOT.jar
+java -jar event-service/target/event-service-0.0.1-SNAPSHOT.jar
+java -jar booking-service/target/booking-service-0.0.1-SNAPSHOT.jar
 
-# 3. Бизнес-сервисы (в любом порядке, когда Eureka поднялась)
-mvn -pl user-service spring-boot:run
-mvn -pl event-service spring-boot:run       # после реализации
-mvn -pl booking-service spring-boot:run     # после реализации
-
-# 4. Gateway запускается последним
-mvn -pl api-gateway spring-boot:run         # после реализации
+java -jar api-gateway/target/api-gateway-0.0.1-SNAPSHOT.jar            # 4. Gateway
 ```
 
-Почему именно такой порядок: сервисы при старте забирают конфиг у Config Server (без `optional:` они упадут, если его нет) и регистрируются в Eureka.
+При старте сервисы забирают конфиг у Config Server (без `optional:`, поэтому без него они падают) и регистрируются в Eureka. Gateway узнаёт о сервисах через Eureka с задержкой до ~30 секунд. Всё это время запросы через 8080 могут возвращать `503`.
 
 ### 7. Проверка, что всё живо
 
 | Что | Адрес |
 |---|---|
-| Конфиг для сервиса | http://localhost:8888/user-service/default |
-| Дашборд Eureka (все сервисы в списке) | http://localhost:8761 |
-| Здоровье сервиса (Actuator) | http://localhost:8081/actuator/health |
-| Swagger сервиса | http://localhost:8081/swagger-ui.html |
+| Конфиг для сервиса | http://localhost:8888/api-gateway/default |
+| Дашборд Eureka (4 сервиса в списке) | http://localhost:8761 |
+| Здоровье (Actuator) | http://localhost:8080/actuator/health, http://localhost:8081/actuator/health, … |
+| Маршруты gateway | http://localhost:8080/actuator/gateway/routes |
+| Общий Swagger (все сервисы) | http://localhost:8080/swagger-ui.html |
+| Swagger отдельного сервиса | http://localhost:8081/swagger-ui.html, :8082, :8083 |
 
-После появления Gateway все обращения идут через порт 8080:
+В общем Swagger сервис выбирается в выпадающем списке справа вверху. Токен из `/api/auth/login` вставляется через кнопку **Authorize**.
 
 ```bash
 # получить токен
@@ -179,38 +214,38 @@ TOKEN=$(curl -s -X POST localhost:8080/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"admin123"}' | sed -E 's/.*"token":"([^"]+)".*/\1/')
 
-# запрос с токеном
-curl -H "Authorization: Bearer $TOKEN" localhost:8080/api/users
-
-# без токена должно вернуться 401
-curl -i localhost:8080/api/users
+curl -H "Authorization: Bearer $TOKEN" localhost:8080/api/users    # 200
+curl -i localhost:8080/api/users                                   # 401: нет токена
+curl -i localhost:8080/api/events                                  # 200: публичный путь
 ```
 
-### 8. Проверка Circuit Breaker (когда будет готов booking-service)
+### 8. Проверка Circuit Breaker
 
-Остановите `event-service` (Ctrl+C) и отправьте запрос на создание заказа. Ожидаемое поведение: быстрый ответ с понятным сообщением от fallback, а не зависание и не `500` с трассировкой.
+Брейкер срабатывает при регистрации на мероприятие: только она обращается к `event-service`.
+1. Под обычным пользователем купите билет (`POST /api/orders`) и запомните `id` позиции заказа.
+2. Остановите `event-service` (Ctrl+C).
+3. Отправьте `POST /api/registrations` с этим `orderItemId` и любым `eventId`.
+
+Ожидаемый результат: быстрый ответ `503` с сообщением «Event service is temporarily unavailable», а не зависание и не `500` с трассировкой. После нескольких неудачных вызовов брейкер открывается, и ответы приходят сразу, без попытки соединения. После повторного запуска `event-service` и паузы в 15 секунд регистрация снова работает.
 
 ### 9. Если меняете конфиги в `events-config-repo`
 
 Config Server читает только закоммиченное:
 
 ```bash
-cd path-to-events-config-repo
+cd ../events-config-repo
 git add . && git commit -m "Описание изменения"
 ```
 
-Сервисы подхватывают новое значение при следующем запуске (перезапустите нужный сервис).
+Сервисы подхватывают новые значения при следующем запуске, поэтому нужный сервис надо перезапустить.
 
-### 10. `.gitignore` для `events-platform`
+### 10. `.gitignore`
 
-Если проект будет в git, создайте в корне `events-platform/.gitignore`:
+`.gitignore` исключает `target/` и `.idea/`. Файлы, которые были закоммичены раньше, git продолжает отслеживать, поэтому их нужно один раз убрать из индекса (на диске они останутся):
 
-```
-target/
-.idea/
-*.iml
-.vscode/
+```bash
+git rm -r --cached */target .idea */.idea
+git commit -m "Stop tracking build output and IDE files"
 ```
 
-Репозиторий `events-config-repo` остаётся отдельным. Чтобы он не оказался вложенным в `events-platform`, держите его рядом.
-
+Репозиторий `events-config-repo` остаётся отдельным и лежит рядом с `events-platform`, а не внутри него.

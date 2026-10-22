@@ -19,10 +19,10 @@
     <modules>
         <module>config-server</module>
         <module>discovery-server</module>
-        <!-- позже: user-service, event-service, booking-service, api-gateway -->
         <module>user-service</module>
         <module>event-service</module>
         <module>booking-service</module>
+        <module>api-gateway</module>
     </modules>
 
     <properties>

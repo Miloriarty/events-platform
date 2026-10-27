@@ -3,6 +3,8 @@ package org.example.event.service;
 import org.example.event.model.CategoriesModel;
 import org.example.event.repository.CategoriesRepository;
 import org.example.event.repository.EventRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -14,6 +16,8 @@ import java.util.List;
 
 @Service
 public class CategoriesServiceImpl implements CategoriesService {
+
+    private static final Logger log = LoggerFactory.getLogger(CategoriesServiceImpl.class);
 
     private final CategoriesRepository repository;
     private final EventRepository events;
@@ -30,7 +34,9 @@ public class CategoriesServiceImpl implements CategoriesService {
 
     @Override
     public CategoriesModel create(CategoriesModel category) {
-        return repository.save(category);
+        CategoriesModel saved = repository.save(category);
+        log.info("Created category '{}' (id={})", saved.getName(), saved.getId());
+        return saved;
     }
 
     @Override
@@ -38,7 +44,9 @@ public class CategoriesServiceImpl implements CategoriesService {
         if (!repository.existsById(category.getId())) {
             throw notFound();
         }
-        return repository.save(category);
+        CategoriesModel saved = repository.save(category);
+        log.info("Updated category id={}", saved.getId());
+        return saved;
     }
 
     @Override
@@ -51,6 +59,7 @@ public class CategoriesServiceImpl implements CategoriesService {
                     "Category is used by events and cannot be deleted");
         }
         repository.deleteById(id);
+        log.info("Deleted category id={}", id);
     }
 
     @Override

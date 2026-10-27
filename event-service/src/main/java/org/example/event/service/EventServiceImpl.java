@@ -8,6 +8,8 @@ import org.example.event.model.LocationsModel;
 import org.example.event.repository.CategoriesRepository;
 import org.example.event.repository.EventRepository;
 import org.example.event.repository.LocationsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -20,6 +22,8 @@ import java.util.List;
 
 @Service
 public class EventServiceImpl implements EventService {
+
+    private static final Logger log = LoggerFactory.getLogger(EventServiceImpl.class);
 
     private final EventRepository events;
     private final LocationsRepository locations;
@@ -65,7 +69,9 @@ public class EventServiceImpl implements EventService {
         EventsModel event = new EventsModel();
         event.setOrganizerId(userId);
         apply(event, request);
-        return EventResponse.from(events.save(event));
+        EventsModel saved = events.save(event);
+        log.info("Created event '{}' (id={}) by organizer {}", saved.getTitle(), saved.getId(), userId);
+        return EventResponse.from(saved);
     }
 
     @Override
@@ -74,7 +80,9 @@ public class EventServiceImpl implements EventService {
         EventsModel event = getOrThrow(id);
         checkCanModify(event, userId, role);
         apply(event, request);                 // organizerId не меняется
-        return EventResponse.from(events.save(event));
+        EventsModel saved = events.save(event);
+        log.info("Updated event id={} by user {} ({})", id, userId, role);
+        return EventResponse.from(saved);
     }
 
     @Override
@@ -83,6 +91,7 @@ public class EventServiceImpl implements EventService {
         EventsModel event = getOrThrow(id);
         checkCanModify(event, userId, role);
         events.delete(event);
+        log.info("Deleted event id={} by user {} ({})", id, userId, role);
     }
 
     private void apply(EventsModel event, EventRequest r) {
@@ -116,6 +125,8 @@ public class EventServiceImpl implements EventService {
     private void checkCanModify(EventsModel event, Long userId, String role) {
         boolean admin = "ADMIN".equals(role);
         if (!admin && !event.getOrganizerId().equals(userId)) {
+            log.warn("User {} ({}) tried to modify event {} of organizer {}",
+                    userId, role, event.getId(), event.getOrganizerId());
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only the organizer or an admin can modify this event");
         }

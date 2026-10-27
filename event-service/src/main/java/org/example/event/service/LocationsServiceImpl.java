@@ -3,6 +3,8 @@ package org.example.event.service;
 import org.example.event.model.LocationsModel;
 import org.example.event.repository.EventRepository;
 import org.example.event.repository.LocationsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -14,6 +16,8 @@ import java.util.List;
 
 @Service
 public class LocationsServiceImpl implements LocationsService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocationsServiceImpl.class);
 
     private final LocationsRepository repository;
     private final EventRepository events;
@@ -30,7 +34,9 @@ public class LocationsServiceImpl implements LocationsService {
 
     @Override
     public LocationsModel create(LocationsModel location) {
-        return repository.save(location);
+        LocationsModel saved = repository.save(location);
+        log.info("Created location '{}' (id={})", saved.getName(), saved.getId());
+        return saved;
     }
 
     @Override
@@ -38,7 +44,9 @@ public class LocationsServiceImpl implements LocationsService {
         if (!repository.existsById(location.getId())) {
             throw notFound();
         }
-        return repository.save(location);
+        LocationsModel saved = repository.save(location);
+        log.info("Updated location id={}", saved.getId());
+        return saved;
     }
 
     @Override
@@ -51,6 +59,7 @@ public class LocationsServiceImpl implements LocationsService {
                     "Location is used by events and cannot be deleted");
         }
         repository.deleteById(id);
+        log.info("Deleted location id={}", id);
     }
 
     @Override

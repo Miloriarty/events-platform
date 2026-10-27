@@ -2,6 +2,8 @@ package org.example.user.service;
 
 import org.example.user.model.RolesModel;
 import org.example.user.repository.RolesRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -10,6 +12,8 @@ import java.util.List;
 
 @Service
 public class RolesServiceImpl implements RolesService {
+
+    private static final Logger log = LoggerFactory.getLogger(RolesServiceImpl.class);
 
     private final RolesRepository repository;
 
@@ -24,7 +28,9 @@ public class RolesServiceImpl implements RolesService {
 
     @Override
     public RolesModel create(RolesModel role) {
-        return repository.save(role);
+        RolesModel saved = repository.save(role);
+        log.info("Created role '{}' (id={})", saved.getName(), saved.getId());
+        return saved;
     }
 
     @Override
@@ -32,12 +38,15 @@ public class RolesServiceImpl implements RolesService {
         if (!repository.existsById(role.getId())) {
             throw new RuntimeException("Role not found");
         }
-        return repository.save(role);
+        RolesModel saved = repository.save(role);
+        log.info("Updated role id={}", saved.getId());
+        return saved;
     }
 
     @Override
     public void delete(Long id) {
         repository.deleteById(id);
+        log.info("Deleted role id={}", id);
     }
 
     @Override

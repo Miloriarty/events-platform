@@ -10,6 +10,8 @@ import org.example.booking.model.RegistrationStatus;
 import org.example.booking.model.RegistrationsModel;
 import org.example.booking.repository.OrderItemsRepository;
 import org.example.booking.repository.RegistrationsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +27,8 @@ import java.util.List;
 
 @Service
 public class RegistrationsServiceImpl implements RegistrationsService {
+
+    private static final Logger log = LoggerFactory.getLogger(RegistrationsServiceImpl.class);
 
     private final RegistrationsRepository registrations;
     private final OrderItemsRepository orderItems;
@@ -101,7 +105,10 @@ public class RegistrationsServiceImpl implements RegistrationsService {
         registration.setOrderItem(item);
         registration.setRegistrationDate(LocalDateTime.now());
         registration.setStatus(RegistrationStatus.CONFIRMED);
-        return RegistrationResponse.from(registrations.save(registration));
+        RegistrationsModel saved = registrations.save(registration);
+        log.info("Registered user {} for event {} (registration id={}, order item {})",
+                userId, event.id(), saved.getId(), item.getId());
+        return RegistrationResponse.from(saved);
     }
 
     @Override
@@ -109,6 +116,7 @@ public class RegistrationsServiceImpl implements RegistrationsService {
     public RegistrationResponse cancel(Long id, Long userId, String role) {
         RegistrationsModel registration = getVisible(id, userId, role);
         registration.setStatus(RegistrationStatus.CANCELLED);
+        log.info("Cancelled registration id={} by user {} ({})", id, userId, role);
         return RegistrationResponse.from(registration);
     }
 

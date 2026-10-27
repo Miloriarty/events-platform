@@ -3,6 +3,8 @@ package org.example.booking.service;
 import org.example.booking.model.TicketsModel;
 import org.example.booking.repository.OrderItemsRepository;
 import org.example.booking.repository.TicketsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -14,6 +16,8 @@ import java.util.List;
 
 @Service
 public class TicketsServiceImpl implements TicketsService {
+
+    private static final Logger log = LoggerFactory.getLogger(TicketsServiceImpl.class);
 
     private final TicketsRepository tickets;
     private final OrderItemsRepository orderItems;
@@ -40,7 +44,9 @@ public class TicketsServiceImpl implements TicketsService {
 
     @Override
     public TicketsModel create(TicketsModel ticket) {
-        return tickets.save(ticket);
+        TicketsModel saved = tickets.save(ticket);
+        log.info("Created ticket type '{}' (id={}), quantity {}", saved.getType(), saved.getId(), saved.getQuantity());
+        return saved;
     }
 
     @Override
@@ -48,7 +54,9 @@ public class TicketsServiceImpl implements TicketsService {
         if (!tickets.existsById(ticket.getId())) {
             throw notFound();
         }
-        return tickets.save(ticket);
+        TicketsModel saved = tickets.save(ticket);
+        log.info("Updated ticket id={}", saved.getId());
+        return saved;
     }
 
     @Override
@@ -61,6 +69,7 @@ public class TicketsServiceImpl implements TicketsService {
                     "Ticket is used in orders and cannot be deleted");
         }
         tickets.deleteById(id);
+        log.info("Deleted ticket id={}", id);
     }
 
     private ResponseStatusException notFound() {

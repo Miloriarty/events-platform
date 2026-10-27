@@ -33,7 +33,7 @@
 | Eureka | `discovery-server`, все сервисы и gateway регистрируются в нём |
 | API Gateway | `api-gateway`: маршруты `lb://...`, проверка JWT, правила по ролям |
 | * Circuit Breaker | `booking-service`: вызовы `event-service` идут через `EventLookup` (Resilience4j) |
-| * Мониторинг и логирование | Actuator (`health`, `info`, `metrics`, на gateway ещё `gateway`), общий формат логов из config-repo, лог каждого запроса в gateway |
+| * Мониторинг и логирование | Actuator (`health`, `info`, `metrics`, на gateway ещё `gateway`), общий формат логов из config-repo, лог каждого запроса в gateway; в бизнес-сервисах (SLF4J) — `INFO` на изменяющие операции (вход, регистрация, создание/изменение/удаление, заказы и их отмена), `WARN` на неудачный вход, отказ в доступе и ошибки `4xx`/валидации, `ERROR` на `5xx` в `ApiExceptionHandler`, `WARN` при сбое вызова event-service в `EventLookup` |
 | * API-документация | Swagger в каждом сервисе и общий Swagger UI на gateway |
 
 ## user-service

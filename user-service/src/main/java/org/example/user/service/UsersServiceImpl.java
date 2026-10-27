@@ -2,6 +2,8 @@ package org.example.user.service;
 
 import org.example.user.model.UsersModel;
 import org.example.user.repository.UsersRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -12,6 +14,8 @@ import java.util.List;
 
 @Service
 public class UsersServiceImpl implements UsersService {
+
+    private static final Logger log = LoggerFactory.getLogger(UsersServiceImpl.class);
 
     private final UsersRepository repository;
     private final PasswordEncoder passwordEncoder;
@@ -40,7 +44,9 @@ public class UsersServiceImpl implements UsersService {
                 )
         );
 
-        return repository.save(user);
+        UsersModel saved = repository.save(user);
+        log.info("Created user '{}' (id={})", saved.getUsername(), saved.getId());
+        return saved;
     }
 
     @Override
@@ -61,12 +67,15 @@ public class UsersServiceImpl implements UsersService {
             );
         }
 
-        return repository.save(user);
+        UsersModel saved = repository.save(user);
+        log.info("Updated user id={}", saved.getId());
+        return saved;
     }
 
     @Override
     public void delete(Long id) {
         repository.deleteById(id);
+        log.info("Deleted user id={}", id);
     }
 
     @Override

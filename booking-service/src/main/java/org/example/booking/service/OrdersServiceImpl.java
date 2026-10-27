@@ -11,6 +11,8 @@ import org.example.booking.model.TicketsModel;
 import org.example.booking.repository.OrdersRepository;
 import org.example.booking.repository.RegistrationsRepository;
 import org.example.booking.repository.TicketsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +27,8 @@ import java.time.LocalDateTime;
 
 @Service
 public class OrdersServiceImpl implements OrdersService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrdersServiceImpl.class);
 
     private final OrdersRepository orders;
     private final TicketsRepository tickets;
@@ -83,7 +87,10 @@ public class OrdersServiceImpl implements OrdersService {
             total = total.add(ticket.getPrice().multiply(BigDecimal.valueOf(line.quantity())));
         }
         order.setTotalPrice(total);
-        return OrderResponse.from(orders.save(order));
+        OrdersModel saved = orders.save(order);
+        log.info("Created order id={} for user {}: {} item(s), total {}",
+                saved.getId(), userId, saved.getItems().size(), total);
+        return OrderResponse.from(saved);
     }
 
     @Override
@@ -99,6 +106,7 @@ public class OrdersServiceImpl implements OrdersService {
         }
         registrations.findByOrderId(order.getId())
                 .forEach(r -> r.setStatus(RegistrationStatus.CANCELLED));
+        log.info("Cancelled order id={} by user {} ({}), tickets returned to stock", id, userId, role);
         return OrderResponse.from(order);
     }
 

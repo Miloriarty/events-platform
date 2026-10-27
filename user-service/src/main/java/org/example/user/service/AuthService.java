@@ -9,6 +9,8 @@ import org.example.user.model.UsersModel;
 import org.example.user.repository.RolesRepository;
 import org.example.user.repository.UsersRepository;
 import org.example.user.security.JwtService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UsersRepository users;
     private final RolesRepository roles;
@@ -34,8 +38,11 @@ public class AuthService {
         // одинаковая ошибка и для «нет пользователя», и для «неверный пароль»
         UsersModel user = users.findFirstByUsernameIgnoreCase(req.username())
                 .filter(u -> encoder.matches(req.password(), u.getPassword()))
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED, "Invalid username or password"));
+                .orElseThrow(() -> {
+                    log.warn("Failed login attempt for username '{}'", req.username());
+                    return new ResponseStatusException(
+                            HttpStatus.UNAUTHORIZED, "Invalid username or password");
+                });
 
         String role = roles.findById(user.getRoleId())
                 .map(RolesModel::getName)
@@ -43,11 +50,13 @@ public class AuthService {
                         HttpStatus.INTERNAL_SERVER_ERROR, "User role is not configured"));
 
         String token = jwt.generateToken(user.getId(), user.getUsername(), role);
+        log.info("User '{}' (id={}, role={}) logged in", user.getUsername(), user.getId(), role);
         return new LoginResponse(token, "Bearer", jwt.getExpirationSeconds());
     }
 
     public UserResponse register(RegisterRequest req) {
         if (users.existsByUsernameIgnoreCase(req.username())) {
+            log.warn("Registration rejected: username '{}' already taken", req.username());
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already taken");
         }
         Long userRoleId = roles.findByNameIgnoreCase("USER").stream()
@@ -58,6 +67,8 @@ public class AuthService {
 
         UsersModel user = new UsersModel(null, req.username(), encoder.encode(req.password()),
                 req.email(), req.fullName(), req.phone(), userRoleId);
-        return UserResponse.from(users.save(user));
+        UsersModel saved = users.save(user);
+        log.info("Registered user '{}' (id={})", saved.getUsername(), saved.getId());
+        return UserResponse.from(saved);
     }
 }

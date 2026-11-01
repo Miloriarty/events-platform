@@ -39,6 +39,11 @@ public class EventsModel {
     @Column(nullable = false)
     private Integer maxParticipants;
 
+    // время последней загрузки картинки (мс); null — картинки нет.
+    // Входит в URL картинки, чтобы браузер не показывал старую из кеша
+    @Column(name = "image_version")
+    private Long imageVersion;
+
     public EventsModel() {}
 
     public Long getId() { return id; }
@@ -58,4 +63,6 @@ public class EventsModel {
     public void setOrganizerId(Long organizerId) { this.organizerId = organizerId; }
     public Integer getMaxParticipants() { return maxParticipants; }
     public void setMaxParticipants(Integer maxParticipants) { this.maxParticipants = maxParticipants; }
+    public Long getImageVersion() { return imageVersion; }
+    public void setImageVersion(Long imageVersion) { this.imageVersion = imageVersion; }
 }

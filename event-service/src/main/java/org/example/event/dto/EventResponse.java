@@ -17,11 +17,15 @@ public record EventResponse(
         LocationsModel location,
         CategoriesModel category,
         @Schema(description = "ID организатора (пользователь из user-service)") Long organizerId,
-        Integer maxParticipants
+        Integer maxParticipants,
+        @Schema(description = "Адрес картинки; null, если картинки нет",
+                example = "/api/events/1/image?v=1767225600000") String imageUrl
 ) {
     public static EventResponse from(EventsModel e) {
+        String imageUrl = e.getImageVersion() == null ? null
+                : "/api/events/" + e.getId() + "/image?v=" + e.getImageVersion();
         return new EventResponse(e.getId(), e.getTitle(), e.getDescription(),
                 e.getStartDate(), e.getEndDate(), e.getLocation(), e.getCategory(),
-                e.getOrganizerId(), e.getMaxParticipants());
+                e.getOrganizerId(), e.getMaxParticipants(), imageUrl);
     }
 }

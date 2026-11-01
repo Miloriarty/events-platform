@@ -49,7 +49,9 @@
 - `organizerId` — простой `Long`, а не ссылка на пользователя. Он берётся из заголовка `X-User-Id`, который проставляет gateway, поэтому указать чужой id нельзя.
 - Менять и удалять мероприятие может только организатор (`organizerId == X-User-Id`) или `ADMIN`. Это проверяет сам сервис.
 - `GET /api/events/my` возвращает мероприятия текущего пользователя.
+- Дата начала не может быть в прошлом: при создании и при её изменении сервис отвечает `400 Start date must not be in the past`. Уже прошедшее мероприятие можно редактировать, если не менять его дату начала.
 - Сервис хранит вместимость (`maxParticipants`), но не знает, сколько мест занято. Занятость считает `booking-service`, так у каждого факта один владелец.
+- **Картинка мероприятия** (одна на мероприятие) хранится в БД, в отдельной таблице `event_images`. Поэтому списки мероприятий не загружают байты картинок. `PUT /api/events/{id}/image` (multipart, поле `file`) загружает или заменяет картинку: JPEG, PNG, WebP или GIF до 5 МБ, иначе `415`/`413`. Загружать может организатор или `ADMIN`. `DELETE /api/events/{id}/image` удаляет картинку. `GET /api/events/{id}/image` публичный. В ответе мероприятия поле `imageUrl` содержит `/api/events/{id}/image?v=<версия>` или `null`. Версия меняется при каждой загрузке, поэтому картинку можно кешировать на 30 дней. Лимит multipart задан в `event-service.yml` config-repo (`spring.servlet.multipart`). При удалении мероприятия удаляется и его картинка.
 
 ## booking-service
 
@@ -202,6 +204,7 @@ java -jar api-gateway/target/api-gateway-0.0.1-SNAPSHOT.jar            # 4. Gate
 | Конфиг для сервиса | http://localhost:8888/api-gateway/default |
 | Дашборд Eureka (4 сервиса в списке) | http://localhost:8761 |
 | Здоровье (Actuator) | http://localhost:8080/actuator/health, http://localhost:8081/actuator/health, … |
+| Информация о сервисе (имя, Java, ОС) | http://localhost:8080/actuator/info, http://localhost:8081/actuator/info, … |
 | Маршруты gateway | http://localhost:8080/actuator/gateway/routes |
 | Общий Swagger (все сервисы) | http://localhost:8080/swagger-ui.html |
 | Swagger отдельного сервиса | http://localhost:8081/swagger-ui.html, :8082, :8083 |

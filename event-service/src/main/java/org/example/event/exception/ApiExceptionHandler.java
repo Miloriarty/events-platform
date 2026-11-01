@@ -7,6 +7,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.LinkedHashMap;
@@ -36,5 +37,12 @@ public class ApiExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
         pd.setProperty("errors", errors);
         return pd;
+    }
+
+    // лимит spring.servlet.multipart.* срабатывает до контроллера
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ProblemDetail handleUploadSize(MaxUploadSizeExceededException ex) {
+        log.warn("Upload rejected: {}", ex.getMessage());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, "Image must not exceed 5 MB");
     }
 }

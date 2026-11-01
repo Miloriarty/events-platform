@@ -6,13 +6,21 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.example.event.dto.EventImage;
 import org.example.event.dto.EventRequest;
 import org.example.event.dto.EventResponse;
 import org.example.event.service.EventService;
 import org.springframework.data.web.PagedModel;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 
 @RestController
@@ -86,5 +94,44 @@ public class EventsController {
                        @Parameter(hidden = true) @RequestHeader(USER_ID) Long userId,
                        @Parameter(hidden = true) @RequestHeader(USER_ROLE) String role) {
         eventService.delete(id, userId, role);
+    }
+
+    @Operation(summary = "Картинка мероприятия", description = "Публичный эндпоинт, отдаёт файл картинки")
+    @ApiResponse(responseCode = "404", description = "У мероприятия нет картинки")
+    @GetMapping("/{id}/image")
+    public ResponseEntity<byte[]> getImage(@PathVariable Long id) {
+        EventImage image = eventService.getImage(id);
+        // в URL из EventResponse есть ?v=<версия>, поэтому файл можно долго кешировать
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(image.contentType()))
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(image.data());
+    }
+
+    @Operation(summary = "Загрузить картинку",
+            description = "JPEG, PNG, WebP или GIF до 5 МБ; заменяет текущую. Только организатор или ADMIN")
+    @ApiResponse(responseCode = "403", description = "Нет прав на изменение")
+    @ApiResponse(responseCode = "413", description = "Файл больше 5 МБ")
+    @ApiResponse(responseCode = "415", description = "Неподдерживаемый формат")
+    @PutMapping(value = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public EventResponse uploadImage(@PathVariable Long id,
+                                     @RequestParam("file") MultipartFile file,
+                                     @Parameter(hidden = true) @RequestHeader(USER_ID) Long userId,
+                                     @Parameter(hidden = true) @RequestHeader(USER_ROLE) String role) {
+        try {
+            return eventService.uploadImage(id, file.getContentType(), file.getBytes(), userId, role);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file");
+        }
+    }
+
+    @Operation(summary = "Удалить картинку", description = "Только организатор или ADMIN")
+    @ApiResponse(responseCode = "403", description = "Нет прав на изменение")
+    @DeleteMapping("/{id}/image")
+    public EventResponse deleteImage(@PathVariable Long id,
+                                     @Parameter(hidden = true) @RequestHeader(USER_ID) Long userId,
+                                     @Parameter(hidden = true) @RequestHeader(USER_ROLE) String role) {
+        return eventService.deleteImage(id, userId, role);
     }
 }

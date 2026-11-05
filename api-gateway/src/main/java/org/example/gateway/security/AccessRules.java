@@ -41,7 +41,8 @@ public class AccessRules {
             rule(HttpMethod.GET, "/api/tickets/**", Access.AUTHENTICATED),
             rule(null, "/api/tickets/**", Access.MANAGER),
             rule(null, "/api/orders/**", Access.AUTHENTICATED),
-            rule(null, "/api/registrations/**", Access.AUTHENTICATED)
+            rule(null, "/api/registrations/**", Access.AUTHENTICATED),
+            rule(null, "/api/notifications/**", Access.AUTHENTICATED)
     );
 
     public Access required(HttpMethod method, PathContainer path) {

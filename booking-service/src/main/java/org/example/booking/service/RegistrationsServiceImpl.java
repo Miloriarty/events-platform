@@ -4,6 +4,8 @@ import org.example.booking.client.EventInfo;
 import org.example.booking.client.EventLookup;
 import org.example.booking.dto.RegistrationRequest;
 import org.example.booking.dto.RegistrationResponse;
+import org.example.booking.messaging.BookingEvent;
+import org.example.booking.messaging.BookingEventType;
 import org.example.booking.model.OrderItemsModel;
 import org.example.booking.model.OrderStatus;
 import org.example.booking.model.RegistrationStatus;
@@ -12,6 +14,7 @@ import org.example.booking.repository.OrderItemsRepository;
 import org.example.booking.repository.RegistrationsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,13 +36,16 @@ public class RegistrationsServiceImpl implements RegistrationsService {
     private final RegistrationsRepository registrations;
     private final OrderItemsRepository orderItems;
     private final EventLookup eventLookup;
+    private final ApplicationEventPublisher events;
 
     public RegistrationsServiceImpl(RegistrationsRepository registrations,
                                     OrderItemsRepository orderItems,
-                                    EventLookup eventLookup) {
+                                    EventLookup eventLookup,
+                                    ApplicationEventPublisher events) {
         this.registrations = registrations;
         this.orderItems = orderItems;
         this.eventLookup = eventLookup;
+        this.events = events;
     }
 
     @Override
@@ -108,6 +114,7 @@ public class RegistrationsServiceImpl implements RegistrationsService {
         RegistrationsModel saved = registrations.save(registration);
         log.info("Registered user {} for event {} (registration id={}, order item {})",
                 userId, event.id(), saved.getId(), item.getId());
+        events.publishEvent(BookingEvent.of(BookingEventType.REGISTRATION_CREATED, saved));
         return RegistrationResponse.from(saved);
     }
 
@@ -115,8 +122,12 @@ public class RegistrationsServiceImpl implements RegistrationsService {
     @Transactional
     public RegistrationResponse cancel(Long id, Long userId, String role) {
         RegistrationsModel registration = getVisible(id, userId, role);
+        if (registration.getStatus() == RegistrationStatus.CANCELLED) {
+            return RegistrationResponse.from(registration);     // повторная отмена безвредна
+        }
         registration.setStatus(RegistrationStatus.CANCELLED);
         log.info("Cancelled registration id={} by user {} ({})", id, userId, role);
+        events.publishEvent(BookingEvent.of(BookingEventType.REGISTRATION_CANCELLED, registration));
         return RegistrationResponse.from(registration);
     }
 

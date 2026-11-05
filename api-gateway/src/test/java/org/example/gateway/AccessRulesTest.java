@@ -56,6 +56,13 @@ class AccessRulesTest {
     }
 
     @Test
+    void notificationsNeedUser() {
+        assertEquals(Access.AUTHENTICATED, required(HttpMethod.GET, "/api/notifications/stream"));
+        assertEquals(Access.AUTHENTICATED, required(HttpMethod.POST, "/api/notifications/read-all"));
+        assertEquals(Access.PUBLIC, required(HttpMethod.GET, "/notification-service/v3/api-docs"));
+    }
+
+    @Test
     void unknownPathNeedsUser() {
         assertEquals(Access.AUTHENTICATED, required(HttpMethod.GET, "/something"));
     }

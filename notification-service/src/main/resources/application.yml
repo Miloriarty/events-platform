@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: notification-service
+  config:
+    import:
+      - configserver:http://localhost:8888
+      # необязательный файл с настройками почты (MAIL_*), вне репозитория: там лежит пароль
+      - optional:file:${user.home}/.config/events-platform/notification-service.env[.properties]

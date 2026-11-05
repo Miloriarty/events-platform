@@ -3,6 +3,8 @@ package org.example.booking.service;
 import org.example.booking.dto.OrderItemRequest;
 import org.example.booking.dto.OrderRequest;
 import org.example.booking.dto.OrderResponse;
+import org.example.booking.messaging.BookingEvent;
+import org.example.booking.messaging.BookingEventType;
 import org.example.booking.model.OrderItemsModel;
 import org.example.booking.model.OrderStatus;
 import org.example.booking.model.OrdersModel;
@@ -13,6 +15,7 @@ import org.example.booking.repository.RegistrationsRepository;
 import org.example.booking.repository.TicketsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,12 +36,15 @@ public class OrdersServiceImpl implements OrdersService {
     private final OrdersRepository orders;
     private final TicketsRepository tickets;
     private final RegistrationsRepository registrations;
+    private final ApplicationEventPublisher events;
 
     public OrdersServiceImpl(OrdersRepository orders, TicketsRepository tickets,
-                             RegistrationsRepository registrations) {
+                             RegistrationsRepository registrations,
+                             ApplicationEventPublisher events) {
         this.orders = orders;
         this.tickets = tickets;
         this.registrations = registrations;
+        this.events = events;
     }
 
     @Override
@@ -90,6 +96,7 @@ public class OrdersServiceImpl implements OrdersService {
         OrdersModel saved = orders.save(order);
         log.info("Created order id={} for user {}: {} item(s), total {}",
                 saved.getId(), userId, saved.getItems().size(), total);
+        events.publishEvent(BookingEvent.of(BookingEventType.ORDER_CREATED, saved));
         return OrderResponse.from(saved);
     }
 
@@ -107,6 +114,7 @@ public class OrdersServiceImpl implements OrdersService {
         registrations.findByOrderId(order.getId())
                 .forEach(r -> r.setStatus(RegistrationStatus.CANCELLED));
         log.info("Cancelled order id={} by user {} ({}), tickets returned to stock", id, userId, role);
+        events.publishEvent(BookingEvent.of(BookingEventType.ORDER_CANCELLED, order));
         return OrderResponse.from(order);
     }
 

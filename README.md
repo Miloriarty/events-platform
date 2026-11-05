@@ -2,7 +2,7 @@
 
 Микросервисное приложение для управления мероприятиями на Spring Cloud: Config Server, Eureka, Spring Cloud Gateway, Circuit Breaker (Resilience4j), Actuator, Swagger для каждого сервиса.
 
-Стек: Java 25, Spring Boot 4.0, Spring Cloud 2025.1, PostgreSQL.
+Стек: Java 25, Spring Boot 4.0, Spring Cloud 2025.1, PostgreSQL, RabbitMQ.
 
 ## Общая картина
 (остался get away)
@@ -12,14 +12,20 @@
 | discovery-server ✅ | 8761 | нет | реестр сервисов | нет |
 | user-service ✅ | 8081 | `user_db` | Users, Roles, выдача JWT | нет |
 | event-service ✅ | 8082 | `event_db` | Events, Categories, Locations | нет |
-| booking-service ✅ | 8083 | `booking_db` | Tickets, Orders, OrderItems, Registrations | event-service |
+| booking-service ✅ | 8083 | `booking_db` | Tickets, Orders, OrderItems, Registrations | event-service, публикует события в RabbitMQ |
+| notification-service ✅ | 8084 | `notification_db` | история уведомлений | читает RabbitMQ, ходит в user-service |
 | api-gateway ✅ | 8080 | нет | маршруты, проверка JWT и ролей, общий Swagger | все (через Eureka) |
-| notification-service (по желанию) | 8084 | `notification_db` | история уведомлений | слушает брокер |
 
 ```
 Клиент -> api-gateway :8080 --> user-service    :8081
           (JWT, роли,       |--> event-service   :8082
            X-User-*)        |--> booking-service :8083 -> HTTP Interface + Circuit Breaker -> event-service
+                            |        |
+                            |        | RabbitMQ (booking.events)
+                            |        v
+                            |--> notification-service :8084 -> HTTP Interface + Circuit Breaker -> user-service
+                                     |--> браузер: SSE через gateway
+                                     |--> почта: SMTP
 
 Все сервисы: конфиг <- config-server :8888 (git: ../events-config-repo),  регистрация -> discovery-server :8761
 ```
@@ -28,11 +34,11 @@
 
 | Требование | Где сделано |
 |---|---|
-| Минимум 3 микросервиса | `user-service`, `event-service`, `booking-service` |
+| Минимум 3 микросервиса | `user-service`, `event-service`, `booking-service`, `notification-service` |
 | Spring Cloud Config | `config-server` + отдельный git-репозиторий `events-config-repo` |
 | Eureka | `discovery-server`, все сервисы и gateway регистрируются в нём |
 | API Gateway | `api-gateway`: маршруты `lb://...`, проверка JWT, правила по ролям |
-| * Circuit Breaker | `booking-service`: вызовы `event-service` идут через `EventLookup` (Resilience4j) |
+| * Circuit Breaker | `booking-service`: вызовы `event-service` идут через `EventLookup`; `notification-service`: вызовы `user-service` идут через `UserLookup` (Resilience4j) |
 | * Мониторинг и логирование | Actuator (`health`, `info`, `metrics`, на gateway ещё `gateway`), общий формат логов из config-repo, лог каждого запроса в gateway; в бизнес-сервисах (SLF4J) — `INFO` на изменяющие операции (вход, регистрация, создание/изменение/удаление, заказы и их отмена), `WARN` на неудачный вход, отказ в доступе и ошибки `4xx`/валидации, `ERROR` на `5xx` в `ApiExceptionHandler`, `WARN` при сбое вызова event-service в `EventLookup` |
 | * API-документация | Swagger в каждом сервисе и общий Swagger UI на gateway |
 
@@ -86,6 +92,7 @@
 - `/api/auth/**`, `/api/users/**` → `user-service`
 - `/api/events/**`, `/api/categories/**`, `/api/locations/**` → `event-service`
 - `/api/orders/**`, `/api/registrations/**`, `/api/tickets/**` → `booking-service`
+- `/api/notifications/**` → `notification-service`
 - `/<service>/v3/api-docs` → `/v3/api-docs` нужного сервиса (для общего Swagger UI)
 
 **Проверка JWT** (`AuthFilter`). Подпись проверяется тем же секретом, которым её ставит `user-service`: `jwt.secret` лежит в общем `application.yml` config-repo. Фильтр всегда **удаляет** присланные клиентом `X-User-Id` и `X-User-Role` и ставит свои. Иначе любой мог бы прислать `X-User-Role: ADMIN`.
@@ -101,17 +108,66 @@
 | `/api/users/**` | `ADMIN` |
 | `GET /api/tickets/**` | любой авторизованный |
 | изменение билетов | `MANAGER`, `ADMIN` |
-| заказы, регистрации, всё остальное | любой авторизованный |
+| заказы, регистрации, уведомления, всё остальное | любой авторизованный |
 
 Без токена на закрытом пути gateway вернёт `401`, с неверным или просроченным токеном тоже `401`, при нехватке роли `403`. `RequestLoggingFilter` пишет в лог одну строку на каждый запрос: метод, путь, маршрут, статус и время.
 
 Сервисы по-прежнему доступны напрямую на своих портах, и там заголовки никто не проверяет. Защищён только вход через gateway.
 
-## notification-service (необязательный)
+## notification-service
 
-**Идея:** после создания заказа или регистрации пользователю уходит уведомление. Это показало бы **асинхронное** взаимодействие: `booking-service` публикует событие `order.created` в брокер (RabbitMQ), а `notification-service` читает его и пишет в лог (или «отправляет письмо»). Заказ при этом не ждёт отправки.
+Сообщает пользователю о его заказах и регистрациях: в браузере и на почту. Заказ не ждёт доставки, потому что сервисы связаны **асинхронно** через RabbitMQ.
 
-**Цена:** нужно поднять брокер (проще всего в Docker) и добавить `spring-boot-starter-amqp`. Для зачёта он не нужен.
+**Откуда берутся уведомления.** После коммита транзакции `booking-service` публикует событие в topic exchange `booking.events` (`order.created`, `order.cancelled`, `registration.created`, `registration.cancelled`). Адресат — владелец заказа или регистрации, даже если отменил их `ADMIN`. Откатившаяся операция ничего не публикует. Отмена заказа даёт одно уведомление, а не отдельное на каждую его регистрацию.
+
+**Обработка** (`NotificationsServiceImpl.deliver`):
+1. Проверяет, не обрабатывалось ли сообщение с таким `messageId`: брокер может доставить его повторно.
+2. Сохраняет уведомление в `notification_db`. Текст формирует этот сервис (`NotificationTemplates`).
+3. Отправляет его в открытые вкладки пользователя через SSE.
+4. Запрашивает адрес почты у `user-service` и отправляет письмо. Адрес здесь не хранится: у него один владелец. Вызов обёрнут в Circuit Breaker (`UserLookup`).
+
+**API** (только свои уведомления, чужой id даёт `404`, `ADMIN` здесь не отличается от других):
+
+| Запрос | Что делает |
+|---|---|
+| `GET /api/notifications` | история, сначала новые |
+| `GET /api/notifications/unread-count` | количество непрочитанных |
+| `GET /api/notifications/stream` | поток новых уведомлений (SSE, событие `notification`, раз в 25 с комментарий `ping`) |
+| `POST /api/notifications/{id}/read` | отметить прочитанным |
+| `POST /api/notifications/read-all` | отметить все прочитанными |
+
+Соединение SSE закрывается через 30 минут, и клиент подключается заново: так gateway снова проверяет токен.
+
+**Что происходит при сбоях:**
+
+| Сбой | Результат |
+|---|---|
+| Брокер недоступен при заказе | заказ создаётся, событие **теряется**, в логе `booking-service` `WARN` (outbox не сделан) |
+| `notification-service` остановлен | события ждут в очереди и обрабатываются после запуска |
+| Почта или `user-service` недоступны | уведомление остаётся в истории и в браузере, в БД `email_status = FAILED`, письмо **повторно не отправляется** |
+| Сообщение не удаётся обработать | 3 попытки, затем очередь `notification.booking-events.dlq` |
+
+Очередь объявляет `notification-service`, поэтому до его **самого первого** запуска события некуда складывать и они пропадают.
+
+Открытые соединения SSE хранятся в памяти процесса, поэтому сервис рассчитан на один экземпляр. При нескольких экземплярах событие получат только вкладки, подключённые к обработавшему его.
+
+### Настройка почты
+
+По умолчанию письма уходят в **Mailpit**: тестовый SMTP-сервер, который ничего не доставляет, а показывает письма на http://localhost:8025.
+
+Для настоящей почты `notification-service` при запуске сам читает необязательный файл `~/.config/events-platform/notification-service.env`, поэтому вводить `export` не нужно. Файл лежит вне репозиториев, потому что в нём пароль. Значения пишутся без кавычек. Пример для Gmail (нужен [пароль приложения](https://myaccount.google.com/apppasswords), обычный пароль не подойдёт):
+
+```properties
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=you@gmail.com
+MAIL_PASSWORD=пароль приложения
+MAIL_SMTP_AUTH=true
+MAIL_SMTP_STARTTLS=true
+MAIL_FROM=you@gmail.com
+```
+
+После правки файла перезапустите сервис. Если файла нет, письма снова идут в Mailpit. Те же имена можно задать и как обычные переменные окружения. Адрес клиента в ссылках из писем задаёт `FRONTEND_URL` (по умолчанию `http://localhost:4200`).
 
 ## Что осталось сделать
 
@@ -123,10 +179,12 @@
    - менеджер смотрит участников;
    - пользователь отменяет заказ, билеты возвращаются в остаток.
 4. **Билеты не привязаны к мероприятию.** У `Tickets` нет `eventId`, поэтому один купленный билет можно использовать для регистрации на любое мероприятие. Если так задумано, это стоит явно описать. Если нет, добавить `eventId` в `Tickets` и проверять его при регистрации.
-5. **Удаление пользователя с заказами.** Сейчас `DELETE /api/users/{id}` удаляет пользователя без проверок, и его заказы остаются с несуществующим `userId`. Варианты: запретить удаление при наличии заказов или перейти на «мягкое удаление» (`active=false`). Кроме того, для несуществующего id `findById` бросает `RuntimeException`, и клиент получает `500` вместо `404`.
-6. **Тесты.** В `pom.xml` пяти модулей нет `spring-boot-starter-test`, поэтому их `contextLoads` не компилируются. Нужно либо добавить зависимость, либо удалить эти тесты: им всё равно нужны запущенный Config Server и PostgreSQL. Отдельно работает только юнит-тест `api-gateway/.../AccessRulesTest`.
+5. **Удаление пользователя с заказами.** Сейчас `DELETE /api/users/{id}` удаляет пользователя без проверок, и его заказы остаются с несуществующим `userId`. Варианты: запретить удаление при наличии заказов или перейти на «мягкое удаление» (`active=false`).
+6. **Тесты.** В `pom.xml` пяти модулей нет `spring-boot-starter-test`, поэтому их `contextLoads` не компилируются. Нужно либо добавить зависимость, либо удалить эти тесты: им всё равно нужны запущенный Config Server и PostgreSQL. Отдельно работают только юнит-тесты `api-gateway/.../AccessRulesTest` и тесты `notification-service`.
 7. **Убрать из git ранее закоммиченные `target/` и `.idea/`** (раздел 10).
-8. По желанию: **notification-service**, Circuit Breaker с fallback-маршрутом на самом gateway.
+8. **Надёжность уведомлений** (см. таблицу сбоев в разделе notification-service). Можно добавить outbox в `booking-service` и повторную отправку писем со статусом `FAILED`.
+9. **Уведомления об изменении мероприятия.** Сейчас есть только события о заказах и регистрациях. Перенос или отмена мероприятия участникам не сообщаются: для этого `event-service` должен публиковать события, а участников знает `booking-service`.
+10. По желанию: Circuit Breaker с fallback-маршрутом на самом gateway.
 
 ---
 
@@ -150,8 +208,25 @@ git --version
 CREATE DATABASE user_db;
 CREATE DATABASE event_db;
 CREATE DATABASE booking_db;
-CREATE DATABASE notification_db;   -- только для notification-service
+CREATE DATABASE notification_db;
 ```
+
+### RabbitMQ и почта
+
+`booking-service` и `notification-service` нужен RabbitMQ, а `notification-service` ещё и SMTP-сервер. Для локального запуска оба описаны в `docker-compose.yml`:
+
+```bash
+docker compose up -d
+```
+
+На Podman без compose-провайдера то же самое:
+
+```bash
+podman run -d --name rabbitmq -p 5672:5672 -p 15672:15672 docker.io/library/rabbitmq:4-management-alpine
+podman run -d --name mailpit -p 1025:1025 -p 8025:8025 docker.io/axllent/mailpit:latest
+```
+
+Консоль RabbitMQ: http://localhost:15672 (`guest` / `guest`). Письма: http://localhost:8025. Адрес брокера можно переопределить переменными `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`.
 
 ### 3. Пароль БД
 
@@ -175,6 +250,9 @@ api-gateway/mvnw -f pom.xml package -Dmaven.test.skip=true
 
 # только юнит-тест правил доступа gateway
 api-gateway/mvnw -f pom.xml -pl api-gateway test -Dtest=AccessRulesTest
+
+# юнит-тесты notification-service
+api-gateway/mvnw -f pom.xml -pl notification-service test
 ```
 
 `-Dmaven.test.skip=true` нужен, пока не решён пункт 6 из «Что осталось сделать».
@@ -191,6 +269,7 @@ java -jar discovery-server/target/discovery-server-0.0.1-SNAPSHOT.jar  # 2. Eure
 java -jar user-service/target/user-service-0.0.1-SNAPSHOT.jar
 java -jar event-service/target/event-service-0.0.1-SNAPSHOT.jar
 java -jar booking-service/target/booking-service-0.0.1-SNAPSHOT.jar
+java -jar notification-service/target/notification-service-0.0.1-SNAPSHOT.jar
 
 java -jar api-gateway/target/api-gateway-0.0.1-SNAPSHOT.jar            # 4. Gateway
 ```
@@ -202,12 +281,14 @@ java -jar api-gateway/target/api-gateway-0.0.1-SNAPSHOT.jar            # 4. Gate
 | Что | Адрес |
 |---|---|
 | Конфиг для сервиса | http://localhost:8888/api-gateway/default |
-| Дашборд Eureka (4 сервиса в списке) | http://localhost:8761 |
+| Дашборд Eureka (5 сервисов в списке) | http://localhost:8761 |
 | Здоровье (Actuator) | http://localhost:8080/actuator/health, http://localhost:8081/actuator/health, … |
 | Информация о сервисе (имя, Java, ОС) | http://localhost:8080/actuator/info, http://localhost:8081/actuator/info, … |
 | Маршруты gateway | http://localhost:8080/actuator/gateway/routes |
 | Общий Swagger (все сервисы) | http://localhost:8080/swagger-ui.html |
-| Swagger отдельного сервиса | http://localhost:8081/swagger-ui.html, :8082, :8083 |
+| Swagger отдельного сервиса | http://localhost:8081/swagger-ui.html, :8082, :8083, :8084 |
+| Письма (Mailpit) | http://localhost:8025 |
+| Очереди RabbitMQ | http://localhost:15672 |
 
 В общем Swagger сервис выбирается в выпадающем списке справа вверху. Токен из `/api/auth/login` вставляется через кнопку **Authorize**.
 

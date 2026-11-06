@@ -35,7 +35,6 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest req) {
-        // одинаковая ошибка и для «нет пользователя», и для «неверный пароль»
         UsersModel user = users.findFirstByUsernameIgnoreCase(req.username())
                 .filter(u -> encoder.matches(req.password(), u.getPassword()))
                 .orElseThrow(() -> {

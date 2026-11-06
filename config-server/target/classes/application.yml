@@ -9,16 +9,13 @@ spring:
   cloud:
     config:
       server:
-        # без этого недоступный репозиторий дает ошибку вместо перехода к следующему
         fail-on-composite-error: false
-        # Читаются оба репозитория, при совпадении ключей важнее первый. GitHub нужен, если локального нет
         composite:
           - type: git
             uri: ${config.local-uri:file:///home/jatakuza/Projects/IdeaProjects/events-config-repo}
-            default-label: main
-          # clone-on-start выключен: без сети config-server должен стартовать и работать с локальным репозиторием
+            default-label: master
           - type: git
-            uri: ${config.remote-uri:https://github.com/Miloriarty/events-platform-config}
-            default-label: main
+            uri: ${config.remote-uri:https://github.com/Miloriarty/events-config-repo}
+            default-label: master
             clone-on-start: false
             timeout: 5

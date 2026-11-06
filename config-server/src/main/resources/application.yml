@@ -13,9 +13,9 @@ spring:
         composite:
           - type: git
             uri: ${config.local-uri:file:///home/jatakuza/Projects/IdeaProjects/events-config-repo}
-            default-label: main
+            default-label: master
           - type: git
-            uri: ${config.remote-uri:https://github.com/Miloriarty/events-platform-config}
-            default-label: main
+            uri: ${config.remote-uri:https://github.com/Miloriarty/events-config-repo}
+            default-label: master
             clone-on-start: false
             timeout: 5

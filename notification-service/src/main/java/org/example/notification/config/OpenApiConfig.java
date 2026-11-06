@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
         title = "Notification Service API",
         version = "1.0",
         description = "Уведомления пользователя: история, отметка о прочтении, поток для браузера"),
-        // относительный адрес: «Try it out» шлёт запросы туда, откуда открыта документация (сервис или gateway)
+        // относительный адрес: «Try it out» шлет запросы туда, откуда открыта документация (сервис или gateway)
         servers = @Server(url = "/"))
 @SecurityScheme(
         name = "BearerAuth",

@@ -32,7 +32,7 @@ public class RequestLoggingFilter implements GlobalFilter, Ordered {
         });
     }
 
-    // раньше AuthFilter, чтобы в лог попадали и отклонённые запросы
+    // раньше AuthFilter, чтобы в лог попадали и отклоненные запросы
     @Override
     public int getOrder() {
         return -200;

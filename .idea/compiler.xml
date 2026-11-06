@@ -7,8 +7,10 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="config-server" />
+        <module name="reminder-service" />
         <module name="discovery-server" />
         <module name="event-service" />
+        <module name="ticket-pass-service" />
         <module name="booking-service" />
         <module name="api-gateway" />
         <module name="user-service" />
@@ -24,6 +26,8 @@
       <module name="discovery-server" options="-parameters" />
       <module name="event-service" options="-parameters" />
       <module name="notification-service" options="-parameters" />
+      <module name="reminder-service" options="-parameters" />
+      <module name="ticket-pass-service" options="-parameters" />
       <module name="user-service" options="-parameters" />
     </option>
   </component>

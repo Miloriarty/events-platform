@@ -35,6 +35,10 @@ public class RegistrationsModel {
     @Column(nullable = false)
     private RegistrationStatus status;
 
+    // время прохода на мероприятие; null - билет еще не использован
+    @Column(name = "checked_in_at")
+    private LocalDateTime checkedInAt;
+
     public RegistrationsModel() {}
 
     public Long getId() { return id; }
@@ -50,4 +54,5 @@ public class RegistrationsModel {
     public void setRegistrationDate(LocalDateTime registrationDate) { this.registrationDate = registrationDate; }
     public RegistrationStatus getStatus() { return status; }
     public void setStatus(RegistrationStatus status) { this.status = status; }
+    public LocalDateTime getCheckedInAt() { return checkedInAt; }
 }

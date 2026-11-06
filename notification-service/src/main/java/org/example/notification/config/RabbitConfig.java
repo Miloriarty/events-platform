@@ -14,12 +14,18 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitConfig {
 
     public static final String EXCHANGE = "booking.events";
+    public static final String REMINDER_EXCHANGE = "reminder.events";
     public static final String QUEUE = "notification.booking-events";
     public static final String DEAD_LETTER_QUEUE = QUEUE + ".dlq";
 
     @Bean
     TopicExchange bookingExchange() {
         return new TopicExchange(EXCHANGE);
+    }
+
+    @Bean
+    TopicExchange reminderExchange() {
+        return new TopicExchange(REMINDER_EXCHANGE);
     }
 
     // Сообщение, которое не удалось обработать за все попытки, уходит в DLQ, а не теряется
@@ -39,6 +45,11 @@ public class RabbitConfig {
     @Bean
     Binding bookingEventsBinding(Queue bookingEventsQueue, TopicExchange bookingExchange) {
         return BindingBuilder.bind(bookingEventsQueue).to(bookingExchange).with("#");
+    }
+
+    @Bean
+    Binding reminderEventsBinding(Queue bookingEventsQueue, TopicExchange reminderExchange) {
+        return BindingBuilder.bind(bookingEventsQueue).to(reminderExchange).with("#");
     }
 
     // Класс определяется по параметру слушателя: в заголовке __TypeId__ лежит класс из booking-service

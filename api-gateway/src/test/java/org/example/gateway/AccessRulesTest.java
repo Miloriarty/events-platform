@@ -63,6 +63,22 @@ class AccessRulesTest {
     }
 
     @Test
+    void passesNeedUserAndCheckInNeedsManager() {
+        assertEquals(Access.AUTHENTICATED, required(HttpMethod.GET, "/api/passes/3"));
+        assertEquals(Access.AUTHENTICATED, required(HttpMethod.GET, "/api/passes/3/pdf"));
+        assertEquals(Access.MANAGER, required(HttpMethod.POST, "/api/passes/check-in"));
+        assertEquals(Access.MANAGER, required(HttpMethod.POST, "/api/registrations/3/check-in"));
+        assertEquals(Access.AUTHENTICATED, required(HttpMethod.POST, "/api/registrations/3/cancel"));
+        assertEquals(Access.PUBLIC, required(HttpMethod.GET, "/ticket-pass-service/v3/api-docs"));
+    }
+
+    @Test
+    void remindersOnlyForAdmin() {
+        assertEquals(Access.ADMIN, required(HttpMethod.POST, "/api/reminders/run"));
+        assertEquals(Access.PUBLIC, required(HttpMethod.GET, "/reminder-service/v3/api-docs"));
+    }
+
+    @Test
     void unknownPathNeedsUser() {
         assertEquals(Access.AUTHENTICATED, required(HttpMethod.GET, "/something"));
     }

@@ -87,7 +87,7 @@ public class OrdersServiceImpl implements OrdersService {
             item.setTicket(ticket);
             item.setTicketType(ticket.getType());
             item.setQuantity(line.quantity());
-            item.setUnitPrice(ticket.getPrice());      // цена берётся из БД, а не от клиента
+            item.setUnitPrice(ticket.getPrice());      // цена берется из БД, а не от клиента
             order.addItem(item);
 
             total = total.add(ticket.getPrice().multiply(BigDecimal.valueOf(line.quantity())));

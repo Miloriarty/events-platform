@@ -70,6 +70,12 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<EventResponse> findByStartDate(LocalDate date) {
+        return events.findByStartDate(date).stream().map(EventResponse::from).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<EventResponse> findByOrganizer(Long organizerId) {
         return events.findByOrganizerId(organizerId).stream()
                 .map(EventResponse::from).toList();
@@ -191,6 +197,7 @@ public class EventServiceImpl implements EventService {
         event.setLocation(location);
         event.setCategory(category);
         event.setMaxParticipants(max);
+        event.setMinTicketPrice(r.minTicketPrice());
     }
 
     private void checkCanModify(EventsModel event, Long userId, String role) {

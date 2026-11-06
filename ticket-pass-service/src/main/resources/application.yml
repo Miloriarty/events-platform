@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: ticket-pass-service
+  config:
+    import: configserver:http://localhost:8888

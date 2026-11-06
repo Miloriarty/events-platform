@@ -1,10 +1,13 @@
 package org.example.event.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Schema(description = "Данные для создания или изменения мероприятия")
@@ -36,5 +39,12 @@ public record EventRequest(
         @Positive(message = "Max participants must be greater than 0")
         @Schema(description = "Максимум участников; если не указан, берётся вместимость локации",
                 example = "100")
-        Integer maxParticipants
+        Integer maxParticipants,
+
+        @NotNull(message = "Minimum ticket price is required")
+        @PositiveOrZero(message = "Minimum ticket price must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "Minimum ticket price is not a valid amount")
+        @Schema(description = "Минимальная цена билета для регистрации; 0 — подходит любой билет",
+                example = "1000.00")
+        BigDecimal minTicketPrice
 ) {}

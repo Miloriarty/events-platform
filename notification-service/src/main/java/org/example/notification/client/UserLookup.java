@@ -23,7 +23,7 @@ public class UserLookup {
         this.breaker = factory.create("user-service");
     }
 
-    // пусто: пользователь удалён или user-service недоступен
+    // пусто: пользователь удален или user-service недоступен
     public Optional<UserInfo> find(Long id) {
         return breaker.run(
                 () -> fetch(id),

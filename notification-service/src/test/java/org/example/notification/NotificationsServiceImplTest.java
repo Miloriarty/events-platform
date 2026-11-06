@@ -38,7 +38,7 @@ class NotificationsServiceImplTest {
             new NotificationsServiceImpl(repository, new NotificationTemplates(), stream, email);
 
     private final BookingEvent event = new BookingEvent("m1", NotificationType.ORDER_CREATED, 7L, 12L,
-            new BigDecimal("100"), null, null, null, LocalDateTime.now());
+            new BigDecimal("100"), null, null, null, LocalDateTime.now(), null);
 
     @BeforeEach
     void saveReturnsEntity() {

@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.example.booking.dto.AvailableOrderItem;
 import org.example.booking.dto.RegistrationRequest;
 import org.example.booking.dto.RegistrationResponse;
 import org.example.booking.service.RegistrationsService;
@@ -37,6 +38,18 @@ public class RegistrationsController {
         return new PagedModel<>(registrationsService.findPage(page, size, userId, role));
     }
 
+    @Operation(summary = "Билеты, подходящие для регистрации на мероприятие",
+            description = "Свои позиции неотменённых заказов с неиспользованными билетами "
+                    + "и ценой не ниже минимальной для мероприятия")
+    @ApiResponse(responseCode = "404", description = "Мероприятие не найдено")
+    @ApiResponse(responseCode = "503", description = "Сервис мероприятий временно недоступен")
+    @GetMapping("/available-items")
+    public List<AvailableOrderItem> getAvailableItems(
+            @RequestParam @Parameter(description = "ID мероприятия") Long eventId,
+            @Parameter(hidden = true) @RequestHeader(RequestHeaders.USER_ID) Long userId) {
+        return registrationsService.findAvailableItems(eventId, userId);
+    }
+
     @Operation(summary = "Получить регистрацию по ID")
     @ApiResponse(responseCode = "404", description = "Регистрация не найдена")
     @GetMapping("/{id}")
@@ -60,7 +73,8 @@ public class RegistrationsController {
     @Operation(summary = "Зарегистрироваться на мероприятие",
             description = "По одной из позиций вашего заказа; одна регистрация занимает одно место")
     @ApiResponse(responseCode = "201", description = "Зарегистрирован")
-    @ApiResponse(responseCode = "409", description = "Нет свободных мест или билеты по позиции исчерпаны")
+    @ApiResponse(responseCode = "409",
+            description = "Нет свободных мест, билеты по позиции исчерпаны или цена билета ниже минимальной")
     @ApiResponse(responseCode = "503", description = "Сервис мероприятий временно недоступен")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -68,6 +82,18 @@ public class RegistrationsController {
             @Valid @RequestBody RegistrationRequest request,
             @Parameter(hidden = true) @RequestHeader(RequestHeaders.USER_ID) Long userId) {
         return registrationsService.create(request, userId);
+    }
+
+    @Operation(summary = "Отметить проход на мероприятие",
+            description = "Только организатор мероприятия или ADMIN. Обычно вызывается из ticket-pass-service")
+    @ApiResponse(responseCode = "403", description = "Вы не организатор этого мероприятия")
+    @ApiResponse(responseCode = "409", description = "Билет уже использован или регистрация отменена")
+    @PostMapping("/{id}/check-in")
+    public RegistrationResponse checkIn(
+            @PathVariable Long id,
+            @Parameter(hidden = true) @RequestHeader(RequestHeaders.USER_ID) Long userId,
+            @Parameter(hidden = true) @RequestHeader(RequestHeaders.USER_ROLE) String role) {
+        return registrationsService.checkIn(id, userId, role);
     }
 
     @Operation(summary = "Отменить регистрацию", description = "Место на мероприятии освобождается")

@@ -1,0 +1,46 @@
+package org.example.pass.client;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.server.ResponseStatusException;
+
+@Component
+public class EventLookup {
+
+    private static final Logger log = LoggerFactory.getLogger(EventLookup.class);
+
+    private final EventClient client;
+    private final CircuitBreaker breaker;
+
+    public EventLookup(EventClient client, CircuitBreakerFactory<?, ?> factory) {
+        this.client = client;
+        this.breaker = factory.create("event-service");
+    }
+
+    public EventInfo getEvent(Long id) {
+        EventInfo event = breaker.run(
+                () -> fetch(id),
+                throwable -> {
+                    log.warn("Call to event-service failed for event {}", id, throwable);
+                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                            "Event service is temporarily unavailable, please try again later");
+                });
+        if (event == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
+        }
+        return event;
+    }
+
+    private EventInfo fetch(Long id) {
+        try {
+            return client.getEvent(id);
+        } catch (HttpClientErrorException.NotFound e) {
+            return null;
+        }
+    }
+}

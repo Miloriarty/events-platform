@@ -35,7 +35,7 @@ public class NotificationStream {
         emitter.onCompletion(() -> remove(userId, emitter));
         emitter.onError(e -> remove(userId, emitter));
         emitter.onTimeout(emitter::complete);
-        // первый фрагмент сразу отправляет заголовки ответа, иначе клиент ждёт до первого события
+        // первый фрагмент сразу отправляет заголовки ответа, иначе клиент ждет до первого события
         send(userId, emitter, SseEmitter.event().comment("connected"));
         return emitter;
     }
@@ -52,7 +52,7 @@ public class NotificationStream {
                 emitter -> send(userId, emitter, SseEmitter.event().comment("ping"))));
     }
 
-    // иначе при остановке Tomcat ждёт завершения открытых запросов
+    // иначе при остановке Tomcat ждет завершения открытых запросов
     @PreDestroy
     void closeAll() {
         clients.values().forEach(emitters -> emitters.forEach(SseEmitter::complete));

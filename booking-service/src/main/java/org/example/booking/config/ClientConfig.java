@@ -14,7 +14,7 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 public class ClientConfig {
 
     // Балансировщик подключается только к этому клиенту, а не ко всем RestClient в приложении
-    // Иначе его получит и сам клиент Eureka, и ему придётся искать Eureka через Eureka
+    // Иначе его получит и сам клиент Eureka, и ему придется искать Eureka через Eureka
     @Bean
     EventClient eventClient(LoadBalancerClient loadBalancerClient) {
         RestClient restClient = RestClient.builder()

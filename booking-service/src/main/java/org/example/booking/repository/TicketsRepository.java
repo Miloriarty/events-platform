@@ -14,7 +14,7 @@ public interface TicketsRepository extends JpaRepository<TicketsModel, Long> {
 
     List<TicketsModel> findByTypeIgnoreCase(String type);
 
-    // Атомарное списание: вернёт 0, если билетов не хватает
+    // Атомарное списание: вернет 0, если билетов не хватает
     @Modifying
     @Query("update TicketsModel t set t.quantity = t.quantity - :amount "
             + "where t.id = :id and t.quantity >= :amount")

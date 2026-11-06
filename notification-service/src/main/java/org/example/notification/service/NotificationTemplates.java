@@ -5,10 +5,13 @@ import org.example.notification.model.NotificationsModel;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
-// Текст уведомлений задаёт этот сервис: booking-service сообщает только о том, что произошло
+// Текст уведомлений задает этот сервис: booking-service сообщает только о том, что произошло
 @Component
 public class NotificationTemplates {
+
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private record Content(String title, String message, String link) {}
 
@@ -29,6 +32,11 @@ public class NotificationTemplates {
             case REGISTRATION_CANCELLED -> new Content(
                     "Регистрация отменена",
                     "Мероприятие: «%s».".formatted(event.eventTitle()),
+                    "/registrations");
+            case EVENT_REMINDER -> new Content(
+                    "Скоро мероприятие: «%s»".formatted(event.eventTitle()),
+                    "Начало %s. Билет с QR-кодом можно открыть в разделе «Мои регистрации»."
+                            .formatted(DATE.format(event.eventDate())),
                     "/registrations");
         };
         return new NotificationsModel(event.messageId(), event.userId(), event.type(),

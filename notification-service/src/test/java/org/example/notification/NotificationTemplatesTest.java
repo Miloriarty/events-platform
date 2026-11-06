@@ -7,6 +7,7 @@ import org.example.notification.service.NotificationTemplates;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,11 +19,12 @@ class NotificationTemplatesTest {
 
     private BookingEvent order(NotificationType type) {
         return new BookingEvent("m1", type, 7L, 12L, new BigDecimal("1500.00"),
-                null, null, null, LocalDateTime.now());
+                null, null, null, LocalDateTime.now(), null);
     }
 
     private BookingEvent registration(NotificationType type) {
-        return new BookingEvent("m2", type, 7L, null, null, 3L, 42L, "Java Meetup", LocalDateTime.now());
+        return new BookingEvent("m2", type, 7L, null, null, 3L, 42L, "Java Meetup", LocalDateTime.now(),
+                LocalDate.of(2026, 12, 1));
     }
 
     @Test
@@ -39,6 +41,14 @@ class NotificationTemplatesTest {
         NotificationsModel n = templates.build(registration(NotificationType.REGISTRATION_CREATED));
         assertEquals("/events/42", n.getLink());
         assertTrue(n.getMessage().contains("Java Meetup"));
+    }
+
+    @Test
+    void reminderNamesEventAndDate() {
+        NotificationsModel n = templates.build(registration(NotificationType.EVENT_REMINDER));
+        assertTrue(n.getTitle().contains("Java Meetup"));
+        assertTrue(n.getMessage().contains("01.12.2026"));
+        assertEquals("/registrations", n.getLink());
     }
 
     @Test

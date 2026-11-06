@@ -41,8 +41,14 @@ public class AccessRules {
             rule(HttpMethod.GET, "/api/tickets/**", Access.AUTHENTICATED),
             rule(null, "/api/tickets/**", Access.MANAGER),
             rule(null, "/api/orders/**", Access.AUTHENTICATED),
+            // организатора проверяет booking-service, здесь отсекаются обычные пользователи
+            rule(HttpMethod.POST, "/api/registrations/*/check-in", Access.MANAGER),
             rule(null, "/api/registrations/**", Access.AUTHENTICATED),
-            rule(null, "/api/notifications/**", Access.AUTHENTICATED)
+            rule(null, "/api/notifications/**", Access.AUTHENTICATED),
+
+            rule(HttpMethod.POST, "/api/passes/check-in", Access.MANAGER),
+            rule(null, "/api/passes/**", Access.AUTHENTICATED),
+            rule(null, "/api/reminders/**", Access.ADMIN)
     );
 
     public Access required(HttpMethod method, PathContainer path) {

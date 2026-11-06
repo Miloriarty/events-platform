@@ -2,6 +2,7 @@ package org.example.event.model;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
@@ -39,7 +40,12 @@ public class EventsModel {
     @Column(nullable = false)
     private Integer maxParticipants;
 
-    // время последней загрузки картинки (мс); null — картинки нет.
+    // DEFAULT нужен ddl-auto: update, иначе NOT NULL-колонка не добавится в таблицу с данными.
+    // У старых мероприятий будет 0, то есть подходит любой билет
+    @Column(name = "min_ticket_price", columnDefinition = "numeric(12,2) default 0 not null")
+    private BigDecimal minTicketPrice = BigDecimal.ZERO;
+
+    // время последней загрузки картинки (мс); null - картинки нет.
     // Входит в URL картинки, чтобы браузер не показывал старую из кеша
     @Column(name = "image_version")
     private Long imageVersion;
@@ -63,6 +69,8 @@ public class EventsModel {
     public void setOrganizerId(Long organizerId) { this.organizerId = organizerId; }
     public Integer getMaxParticipants() { return maxParticipants; }
     public void setMaxParticipants(Integer maxParticipants) { this.maxParticipants = maxParticipants; }
+    public BigDecimal getMinTicketPrice() { return minTicketPrice; }
+    public void setMinTicketPrice(BigDecimal minTicketPrice) { this.minTicketPrice = minTicketPrice; }
     public Long getImageVersion() { return imageVersion; }
     public void setImageVersion(Long imageVersion) { this.imageVersion = imageVersion; }
 }

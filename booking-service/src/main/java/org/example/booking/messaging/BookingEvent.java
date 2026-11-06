@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 // Событие для других сервисов. Тот же контракт описан в notification-service (общего модуля нет).
-// Адресат — владелец заказа или регистрации, а не тот, кто вызвал операцию: заказ может отменить ADMIN.
+// Адресат - владелец заказа или регистрации, а не тот, кто вызвал операцию: заказ может отменить ADMIN.
 public record BookingEvent(
         String messageId,
         BookingEventType type,

@@ -11,6 +11,7 @@ import org.example.event.dto.EventRequest;
 import org.example.event.dto.EventResponse;
 import org.example.event.service.EventService;
 import org.springframework.data.web.PagedModel;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -57,6 +59,14 @@ public class EventsController {
     @GetMapping("/search")
     public List<EventResponse> search(@RequestParam @Parameter(description = "Часть названия") String title) {
         return eventService.searchByTitle(title);
+    }
+
+    @Operation(summary = "Мероприятия, начинающиеся в указанный день")
+    @GetMapping("/starting")
+    public List<EventResponse> starting(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            @Parameter(description = "Дата начала") LocalDate date) {
+        return eventService.findByStartDate(date);
     }
 
     @Operation(summary = "Мои мероприятия", description = "Мероприятия текущего организатора")

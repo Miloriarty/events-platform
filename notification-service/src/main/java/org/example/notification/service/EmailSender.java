@@ -33,7 +33,7 @@ public class EmailSender {
         this.frontendUrl = frontendUrl;
     }
 
-    // Письмо отправляется одним заходом: при сбое уведомление остаётся в истории и в браузере
+    // Письмо отправляется одним заходом: при сбое уведомление остается в истории и в браузере
     public EmailStatus send(NotificationsModel notification) {
         Optional<UserInfo> user = users.find(notification.getUserId());
         if (user.isEmpty()) {

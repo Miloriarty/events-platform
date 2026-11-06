@@ -5,10 +5,12 @@ import org.example.booking.model.RegistrationsModel;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -24,4 +26,12 @@ public interface RegistrationsRepository extends JpaRepository<RegistrationsMode
 
     @Query("select r from RegistrationsModel r where r.orderItem.order.id = :orderId")
     List<RegistrationsModel> findByOrderId(@Param("orderId") Long orderId);
+
+    // Атомарно: из двух одновременных проверок одного билета успешной будет только одна
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            update RegistrationsModel r set r.checkedInAt = :now
+            where r.id = :id and r.status = org.example.booking.model.RegistrationStatus.CONFIRMED
+              and r.checkedInAt is null""")
+    int markCheckedIn(@Param("id") Long id, @Param("now") LocalDateTime now);
 }

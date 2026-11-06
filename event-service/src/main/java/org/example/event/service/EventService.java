@@ -5,6 +5,7 @@ import org.example.event.dto.EventRequest;
 import org.example.event.dto.EventResponse;
 import org.springframework.data.domain.Page;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface EventService {
@@ -12,6 +13,7 @@ public interface EventService {
     EventResponse findById(Long id);
     List<EventResponse> searchByTitle(String title);
     List<EventResponse> findByOrganizer(Long organizerId);
+    List<EventResponse> findByStartDate(LocalDate date);
     EventResponse create(EventRequest request, Long userId);
     EventResponse update(Long id, EventRequest request, Long userId, String role);
     void delete(Long id, Long userId, String role);
